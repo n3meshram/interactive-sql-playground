@@ -1,0 +1,1688 @@
+# Cloud Data Platform Engineer — SQL Revision & Practice Tracker
+
+## Purpose
+
+This document contains all SQL topics learned so far using:
+
+* ETL-style scenarios
+* migration validation
+* reconciliation logic
+* debugging mindset
+* production-style thinking
+
+Goal is NOT memorization.
+Goal is:
+
+* pattern recognition
+* troubleshooting mindset
+* validation thinking
+* ETL engineering foundation
+
+---
+
+# PHASE 1 — SQL FOUNDATION FOR DATA PLATFORM ENGINEER
+
+---
+
+# 1. BASIC SELECT + FILTERING
+
+## Concepts
+
+* SELECT
+* FROM
+* WHERE
+* ORDER BY
+* LIMIT
+
+## Important Understanding
+
+* WHERE filters rows
+* ORDER BY only sorts rows
+* ORDER BY does NOT reduce rows
+
+## Practice Ideas
+
+* find customers from specific city
+* sort latest orders
+* filter NULL values
+
+---
+
+# 2. GROUP BY + HAVING
+
+## Core Understanding
+
+### GROUP BY
+
+Creates groups.
+
+Example:
+
+* group employees by department
+* group customers by city
+* group orders by customer
+
+### HAVING
+
+Filters groups AFTER grouping.
+
+Example:
+
+* departments having salary > 1 lakh
+* duplicate customer IDs
+
+## Important Difference
+
+| Clause | Works On |
+| ------ | -------- |
+| WHERE  | rows     |
+| HAVING | groups   |
+
+## Practice Scenarios
+
+* duplicate detection
+* customer count per city
+* order count per customer
+* region-wise sales
+
+## Sample Pattern
+
+```sql
+SELECT customer_id, COUNT(*)
+FROM orders
+GROUP BY customer_id
+HAVING COUNT(*) > 1;
+```
+
+---
+
+# 3. DUPLICATE DETECTION
+
+## Real ETL Use Cases
+
+* retry issue
+* CDC replay
+* ingestion duplication
+* bad joins
+
+## Important Pattern
+
+```sql
+SELECT customer_id, COUNT(*)
+FROM table_name
+GROUP BY customer_id
+HAVING COUNT(*) > 1;
+```
+
+## Important Learning
+
+* duplicates detected using grouping
+* HAVING used after aggregation
+
+---
+
+# 4. NULL VALIDATION
+
+## Important Rule
+
+WRONG:
+
+```sql
+WHERE customer_id = NULL
+```
+
+CORRECT:
+
+```sql
+WHERE customer_id IS NULL
+```
+
+## NULL Count Validation Pattern
+
+```sql
+SELECT
+COUNT(CASE WHEN customer_id IS NULL THEN 1 END) AS customer_id_nulls
+FROM customer_table;
+```
+
+## Real ETL Use Cases
+
+* bad ingestion
+* missing join keys
+* schema quality checks
+* pipeline validation
+
+## Important Understanding
+
+CASE WHEN creates conditional logic.
+COUNT counts non-null values.
+
+---
+
+# 5. WINDOW FUNCTIONS
+
+## Topics Learned
+
+* ROW_NUMBER()
+* RANK()
+* DENSE_RANK()
+
+---
+
+# 6. ROW_NUMBER()
+
+## Purpose
+
+Assign unique numbering inside groups.
+
+## Important Pattern
+
+```sql
+ROW_NUMBER() OVER (
+PARTITION BY customer_id
+ORDER BY update_time DESC
+)
+```
+
+## Important Understanding
+
+### PARTITION BY
+
+Creates invisible groups.
+Rows stay alive.
+
+### ORDER BY DESC
+
+Newest/largest value first.
+
+### ROW_NUMBER
+
+Assigns numbering inside group.
+
+## Real ETL Use Cases
+
+* latest record extraction
+* deduplication
+* CDC cleanup
+* incremental processing
+
+---
+
+# 7. RANK() vs DENSE_RANK()
+
+## Difference
+
+| Function   | Duplicate Values  | Gap Exists? |
+| ---------- | ----------------- | ----------- |
+| ROW_NUMBER | different numbers | no          |
+| RANK       | same rank         | yes         |
+| DENSE_RANK | same rank         | no          |
+
+## Important Understanding
+
+### RANK
+
+Counts positions.
+Can skip numbers.
+
+### DENSE_RANK
+
+No gaps.
+Continuous ranking.
+
+---
+
+# 8. LATEST RECORD VALIDATION
+
+## Real Scenario
+
+Multiple customer updates exist.
+Need latest row only.
+
+## Important Pattern
+
+```sql
+SELECT *
+FROM (
+    SELECT
+        customer_id,
+        city,
+        update_time,
+        ROW_NUMBER() OVER (
+            PARTITION BY customer_id
+            ORDER BY update_time DESC
+        ) AS rn
+    FROM customer_updates
+) t
+WHERE rn = 1;
+```
+
+## Important Understanding
+
+Need ordering logic:
+
+* timestamp
+* version
+* sequence ID
+* effective date
+
+Without ordering logic:
+latest record cannot be determined.
+
+---
+
+# 9. INNER JOIN
+
+## Rule
+
+Keep ONLY matching rows.
+
+## Important Understanding
+
+INNER JOIN behaves like intersection.
+
+## Common Problems
+
+* row loss
+* duplicates
+* join explosion
+
+## Example
+
+```sql
+SELECT *
+FROM customers c
+INNER JOIN orders o
+ON c.customer_id = o.customer_id;
+```
+
+## Real ETL Issues
+
+* missing records
+* duplicate rows
+* reconciliation failures
+
+---
+
+# 10. LEFT JOIN
+
+## Rule
+
+Keep ALL rows from LEFT table.
+
+If match missing:
+RIGHT table columns become NULL.
+
+## Important Pattern
+
+```sql
+SELECT *
+FROM customers c
+LEFT JOIN orders o
+ON c.customer_id = o.customer_id;
+```
+
+## Important Understanding
+
+LEFT JOIN heavily used for:
+
+* missing record validation
+* reconciliation
+* orphan detection
+* incremental loads
+
+---
+
+# 11. MISSING RECORD VALIDATION
+
+## Goal
+
+Find records present in source but missing in target.
+
+## Important Pattern
+
+```sql
+SELECT c.customer_id
+FROM customer_source c
+LEFT JOIN customer_target t
+ON c.customer_id = t.customer_id
+WHERE t.customer_id IS NULL;
+```
+
+## Real ETL Use Cases
+
+* failed migration detection
+* reconciliation
+* missing CDC rows
+* ingestion gaps
+
+---
+
+# 12. INCREMENTAL LOAD VALIDATION
+
+## Goal
+
+Load only NEW records.
+
+## Important Understanding
+
+If target match missing:
+record is new.
+
+## Important Pattern
+
+```sql
+SELECT c.customer_id
+FROM customer_source_inc c
+LEFT JOIN customer_target_inc t
+ON c.customer_id = t.customer_id
+WHERE t.customer_id IS NULL;
+```
+
+## Real ETL Use Cases
+
+* daily loads
+* CDC pipelines
+* incremental ingestion
+* delta processing
+
+---
+
+# 13. UPDATE DETECTION VALIDATION
+
+## Goal
+
+Find changed records.
+
+## Important Understanding
+
+* record exists in both tables
+* values differ
+
+## Important Pattern
+
+```sql
+SELECT
+c.customer_id,
+c.city AS source_city,
+t.city AS target_city
+FROM customer_source_upd c
+JOIN customer_target_upd t
+ON c.customer_id = t.customer_id
+WHERE c.city != t.city;
+```
+
+## Real ETL Use Cases
+
+* CDC validation
+* SCD processing
+* migration comparison
+* synchronization jobs
+
+---
+
+# 14. RECONCILIATION
+
+## Meaning
+
+Compare:
+
+* source vs target
+* expected vs actual
+
+to validate data correctness.
+
+## Common Reconciliation Checks
+
+| Validation               | Example                     |
+| ------------------------ | --------------------------- |
+| row count                | source count = target count |
+| duplicate check          | no repeated rows            |
+| NULL check               | no unexpected NULLs         |
+| aggregate validation     | sales totals match          |
+| latest record validation | latest data correct         |
+| schema validation        | columns/types same          |
+
+## Real Use Cases
+
+* migration projects
+* ETL validation
+* PySpark comparison
+* audit checks
+
+---
+
+# 15. AGGREGATE VALIDATION
+
+## Goal
+
+Validate business totals.
+
+## Important Understanding
+
+Counts may match but totals may differ.
+
+## Important Functions
+
+* SUM()
+* AVG()
+* MAX()
+* MIN()
+
+## Region-wise Aggregate Comparison Pattern
+
+```sql
+SELECT
+s.region,
+s.source_total,
+t.target_total
+FROM
+(
+    SELECT region, SUM(sales_amount) AS source_total
+    FROM sales_source
+    GROUP BY region
+) s
+JOIN
+(
+    SELECT region, SUM(sales_amount) AS target_total
+    FROM sales_target
+    GROUP BY region
+) t
+ON s.region = t.region
+WHERE s.source_total != t.target_total;
+```
+
+## Important Learning
+
+Aggregate BEFORE joining.
+Avoid join explosion.
+
+---
+
+# 16. JOIN EXPLOSION
+
+## Important Understanding
+
+Joining raw transactional rows can multiply records.
+
+Example:
+
+* Mumbai exists twice in source
+* Mumbai exists twice in target
+
+Join creates:
+
+* 2 x 2 = 4 combinations
+
+## Solution
+
+Aggregate first.
+Then compare summarized data.
+
+Very important ETL concept.
+
+---
+
+# 17. IMPORTANT ENGINEERING THINKING
+
+## Always Predict Before Running Query
+
+Ask:
+
+* will rows increase?
+* decrease?
+* duplicate?
+* become NULL?
+* disappear?
+
+This builds debugging mindset.
+
+---
+
+# 18. SQL EXECUTION THINKING
+
+## Aggregation
+
+Functions like:
+
+* COUNT()
+* SUM()
+* AVG()
+
+can reduce rows.
+
+## ORDER BY
+
+Only sorts rows.
+Does NOT reduce rows.
+
+## WINDOW FUNCTIONS
+
+Keep rows alive.
+Unlike GROUP BY.
+
+---
+
+# 19. ETL RECORD TYPES
+
+## INSERT
+
+New record.
+
+## UPDATE
+
+Existing record changed.
+
+## DELETE/MISSING
+
+Record missing.
+
+## DUPLICATE
+
+Repeated record.
+
+Understanding these is core ETL engineering.
+
+---
+
+# DAILY REVISION STRATEGY
+
+## Daily (30–45 mins)
+
+Practice:
+
+* duplicate detection
+* latest record logic
+* joins
+* NULL validation
+* reconciliation
+* aggregate comparison
+
+---
+
+# MOST IMPORTANT PATTERNS TO REMEMBER
+
+| Problem              | Pattern                     |
+| -------------------- | --------------------------- |
+| duplicate detection  | GROUP BY + HAVING           |
+| latest record        | ROW_NUMBER                  |
+| missing records      | LEFT JOIN + NULL            |
+| incremental load     | LEFT JOIN + NULL            |
+| updated records      | JOIN + value comparison     |
+| NULL validation      | IS NULL                     |
+| aggregate validation | GROUP BY + SUM              |
+| reconciliation       | source vs target comparison |
+
+---
+
+# IMPORTANT FINAL NOTE
+
+Goal is NOT:
+
+* memorizing syntax
+* becoming SQL robot
+
+Goal is:
+
+* understanding data behavior
+* debugging ETL problems
+* reconciliation thinking
+* migration validation
+* production troubleshooting
+
+This foundation will later connect directly to:
+
+* PySpark
+* Databricks
+* ETL pipelines
+* CDC processing
+* Data Platform Engineering
+
+# Cloud Data Platform Engineer — Pending SQL Topics Roadmap
+
+## Purpose
+This roadmap contains the remaining SQL topics required to complete strong practical SQL foundation for:
+- Cloud Data Platform Engineer
+- Data DevOps Engineer
+- ETL Engineer
+- PySpark/Databricks Engineer
+
+Focus is:
+- practical SQL
+- ETL logic
+- migration validation
+- debugging mindset
+- production-style thinking
+
+NOT theoretical database administration.
+
+---
+
+# CURRENT STATUS
+
+## Strong Areas Completed
+
+### Validation & Reconciliation
+- duplicate detection
+- null validation
+- aggregate validation
+- missing record validation
+- update detection
+- incremental load validation
+
+### Window Functions
+- ROW_NUMBER()
+- RANK()
+- DENSE_RANK()
+- latest record logic
+
+### JOINS
+- INNER JOIN
+- LEFT JOIN
+- join duplication
+- join explosion
+- NULL behavior
+- data loss analysis
+
+### Aggregation
+- GROUP BY
+- HAVING
+- SUM()
+- COUNT()
+
+### ETL Thinking
+- reconciliation
+- source vs target validation
+- migration debugging
+- validation mindset
+
+---
+
+# PENDING SQL TOPICS ROADMAP
+
+---
+
+# 1. CASE WHEN (Advanced Practical Usage)
+
+## Why Important
+Used heavily in:
+- ETL transformation
+- data standardization
+- categorization
+- reporting logic
+- migration mapping
+
+## Concepts To Learn
+- simple CASE WHEN
+- multiple conditions
+- nested CASE WHEN
+- conditional aggregation
+- CASE WHEN with SUM/COUNT
+
+## Real ETL Scenarios
+- customer status mapping
+- transaction categorization
+- severity mapping
+- audit flags
+- validation flags
+
+## Example Use Cases
+- mark high-value customers
+- convert NULL to default values
+- generate validation status columns
+
+---
+
+# 2. CTE (WITH Clause)
+
+## Why Important
+One of the MOST important SQL concepts.
+
+Used everywhere in:
+- ETL pipelines
+- reconciliation SQL
+- analytics
+- reporting
+- PySpark SQL
+
+## Concepts To Learn
+- basic CTE
+- multiple CTEs
+- layered transformations
+- readable SQL design
+
+## Real ETL Scenarios
+- breaking large queries into steps
+- reconciliation pipelines
+- staging logic
+- transformation layers
+
+## Important Goal
+Understand:
+- readability
+- step-by-step SQL design
+- modular query thinking
+
+---
+
+# 3. Subqueries (Deep Understanding)
+
+## Why Important
+Very common in production SQL.
+
+## Concepts To Learn
+- scalar subquery
+- subquery in WHERE
+- subquery in FROM
+- correlated subquery
+- nested subquery
+
+## Real ETL Scenarios
+- latest transaction logic
+- filtering based on aggregates
+- dynamic comparisons
+- validation pipelines
+
+## Important Goal
+Understand:
+- inner query execution
+- outer query dependency
+- filtering logic
+
+---
+
+# 4. EXISTS vs NOT EXISTS
+
+## Why Important
+Very important for:
+- reconciliation
+- incremental loads
+- missing record detection
+- duplicate prevention
+
+## Concepts To Learn
+- EXISTS
+- NOT EXISTS
+- comparison with JOIN
+- performance thinking basics
+
+## Real ETL Scenarios
+- load only new records
+- skip existing records
+- identify missing transactions
+
+## Important Goal
+Understand:
+- existence checking
+- logical filtering
+- ETL validation patterns
+
+---
+
+# 5. UNION vs UNION ALL
+
+## Why Important
+Very common interview + ETL topic.
+
+## Concepts To Learn
+- UNION
+- UNION ALL
+- duplicate behavior
+- schema alignment
+
+## Real ETL Scenarios
+- combining multiple sources
+- staging union logic
+- incremental ingestion
+- audit consolidation
+
+## Important Goal
+Understand:
+- duplicate removal behavior
+- row count impact
+
+---
+
+# 6. ADVANCED JOINS
+
+## Topics Pending
+- RIGHT JOIN
+- FULL OUTER JOIN
+- SELF JOIN
+
+---
+
+## RIGHT JOIN
+
+### Goal
+Keep all rows from RIGHT table.
+
+### Real Use Cases
+- reverse reconciliation
+- unmatched target detection
+
+---
+
+## FULL OUTER JOIN
+
+### Goal
+Keep ALL rows from BOTH tables.
+
+### Real Use Cases
+- complete reconciliation reports
+- mismatch analysis
+- source-target comparison
+
+---
+
+## SELF JOIN
+
+### Goal
+Join table with itself.
+
+### Real Use Cases
+- employee-manager hierarchy
+- duplicate relationship analysis
+- comparison logic
+
+---
+
+# 7. DATE FUNCTIONS
+
+## Why Important
+Critical in ETL pipelines.
+
+Most data pipelines are date-driven.
+
+## Concepts To Learn
+- current_date
+- current_timestamp
+- date difference
+- adding/subtracting dates
+- month/year extraction
+- date filtering
+
+## Real ETL Scenarios
+- daily incremental loads
+- last 7 days processing
+- monthly reports
+- partition filtering
+- audit tracking
+
+## Important Goal
+Understand:
+- time-based processing
+- incremental date logic
+
+---
+
+# 8. STRING FUNCTIONS
+
+## Why Important
+Very common in cleansing and standardization.
+
+## Concepts To Learn
+- UPPER
+- LOWER
+- TRIM
+- SUBSTRING
+- LENGTH
+- REPLACE
+- CONCAT
+
+## Real ETL Scenarios
+- customer name cleansing
+- standardization
+- trimming spaces
+- parsing codes
+- data formatting
+
+## Important Goal
+Understand:
+- data cleansing patterns
+- standardization logic
+
+---
+
+# 9. COALESCE
+
+## Why Important
+Very common NULL-handling function.
+
+## Concepts To Learn
+- replacing NULL values
+- default value assignment
+- fallback logic
+
+## Real ETL Scenarios
+- replacing missing city
+- defaulting amounts
+- reporting cleanup
+
+## Important Goal
+Understand:
+- NULL replacement logic
+
+---
+
+# 10. MERGE / UPSERT THINKING (Conceptual)
+
+## Why Important
+Very important for:
+- Databricks
+- Delta Lake
+- CDC processing
+- incremental ETL
+
+## Concepts To Learn
+- insert vs update
+- upsert logic
+- merge conditions
+
+## Real ETL Scenarios
+- daily synchronization
+- CDC merge
+- slowly changing data
+
+## Important Goal
+Understand:
+- how ETL systems maintain latest data
+
+---
+
+# 11. SCD (Slowly Changing Dimensions) Basics
+
+## Why Important
+Very important Data Engineering concept.
+
+## Concepts To Learn
+- SCD Type 1 basics
+- SCD Type 2 basics
+- overwrite vs history tracking
+
+## Real ETL Scenarios
+- customer address change
+- employee department history
+- historical tracking
+
+## Important Goal
+Understand:
+- data history management
+
+---
+
+# 12. DELETE DETECTION LOGIC
+
+## Why Important
+Important reconciliation topic.
+
+## Concepts To Learn
+- identify deleted records
+- source missing logic
+- target orphan detection
+
+## Real ETL Scenarios
+- deleted customer detection
+- synchronization cleanup
+- CDC delete handling
+
+---
+
+# 13. AUDIT COLUMNS
+
+## Why Important
+Very common in enterprise ETL.
+
+## Concepts To Learn
+- created_date
+- updated_date
+- batch_id
+- load_timestamp
+- created_by
+
+## Real ETL Scenarios
+- audit tracking
+- pipeline debugging
+- incremental logic
+- rollback analysis
+
+---
+
+# 14. PERFORMANCE THINKING (Basic Level Only)
+
+## Why Important
+Need basic awareness.
+
+NOT DBA-level optimization.
+
+## Concepts To Learn
+- why joins increase rows
+- why grouping expensive
+- filtering early
+- avoiding unnecessary joins
+
+## Important Goal
+Understand:
+- query behavior
+- ETL efficiency basics
+
+---
+
+# 15. SQL TO PYSPARK MAPPING
+
+## Goal
+Connect SQL concepts with PySpark later.
+
+| SQL Concept | PySpark Equivalent |
+|---|---|
+| GROUP BY | groupBy |
+| WHERE | filter |
+| JOIN | join |
+| ROW_NUMBER | Window functions |
+| CASE WHEN | when/otherwise |
+| SUM | agg(sum()) |
+| IS NULL | isNull() |
+
+This will become extremely important later.
+
+---
+
+# IMPORTANT LEARNING STRATEGY
+
+## DO NOT
+- memorize syntax blindly
+- rush topics
+- binge tutorials
+- compare speed with others
+
+---
+
+## DO
+- practice daily
+- debug mistakes
+- predict outputs before execution
+- understand data behavior
+- connect SQL to ETL scenarios
+
+---
+
+# SQL QUICK SYNTAX CHEAT SHEET
+
+## GROUP BY + HAVING
+
+```sql
+SELECT customer_id, COUNT(*)
+FROM orders
+GROUP BY customer_id
+HAVING COUNT(*) > 1;
+```
+
+---
+
+## INNER JOIN
+
+```sql
+SELECT *
+FROM customers c
+INNER JOIN orders o
+ON c.customer_id = o.customer_id;
+```
+
+---
+
+## LEFT JOIN
+
+```sql
+SELECT *
+FROM customers c
+LEFT JOIN orders o
+ON c.customer_id = o.customer_id;
+```
+
+---
+
+## MISSING RECORD VALIDATION
+
+```sql
+SELECT c.customer_id
+FROM source_table c
+LEFT JOIN target_table t
+ON c.customer_id = t.customer_id
+WHERE t.customer_id IS NULL;
+```
+
+---
+
+## UPDATE DETECTION
+
+```sql
+SELECT
+s.customer_id,
+s.city AS source_city,
+t.city AS target_city
+FROM source_table s
+JOIN target_table t
+ON s.customer_id = t.customer_id
+WHERE s.city != t.city;
+```
+
+---
+
+## ROW_NUMBER
+
+```sql
+SELECT *
+FROM (
+    SELECT
+        customer_id,
+        update_time,
+        ROW_NUMBER() OVER (
+            PARTITION BY customer_id
+            ORDER BY update_time DESC
+        ) AS rn
+    FROM customer_updates
+) t
+WHERE rn = 1;
+```
+
+---
+
+## NULL VALIDATION
+
+```sql
+SELECT *
+FROM customers
+WHERE customer_name IS NULL;
+```
+
+---
+
+## NULL COUNT VALIDATION
+
+```sql
+SELECT
+COUNT(CASE WHEN customer_id IS NULL THEN 1 END) AS null_customer_id
+FROM customer_table;
+```
+
+---
+
+## AGGREGATE VALIDATION
+
+```sql
+SELECT region, SUM(sales_amount)
+FROM sales
+GROUP BY region;
+```
+
+---
+
+## UNION
+
+```sql
+SELECT customer_id FROM source_a
+UNION
+SELECT customer_id FROM source_b;
+```
+
+---
+
+## UNION ALL
+
+```sql
+SELECT customer_id FROM source_a
+UNION ALL
+SELECT customer_id FROM source_b;
+```
+
+---
+
+## EXISTS
+
+```sql
+SELECT *
+FROM customers c
+WHERE EXISTS (
+    SELECT 1
+    FROM orders o
+    WHERE c.customer_id = o.customer_id
+);
+```
+
+---
+
+## NOT EXISTS
+
+```sql
+SELECT *
+FROM customers c
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM orders o
+    WHERE c.customer_id = o.customer_id
+);
+```
+
+---
+
+## CTE
+
+```sql
+WITH sales_summary AS (
+    SELECT
+        region,
+        SUM(amount) AS total_sales
+    FROM sales
+    GROUP BY region
+)
+SELECT *
+FROM sales_summary;
+```
+
+---
+
+## CASE WHEN
+
+```sql
+SELECT
+customer_id,
+CASE
+    WHEN amount > 1000 THEN 'HIGH'
+    ELSE 'LOW'
+END AS category
+FROM sales;
+```
+
+---
+
+## COALESCE
+
+```sql
+SELECT
+customer_id,
+COALESCE(city,'UNKNOWN') AS city
+FROM customers;
+```
+
+---
+
+# FINAL GOAL
+
+Become strong in:
+- ETL SQL
+- reconciliation
+- migration validation
+- data debugging
+- incremental processing
+- production troubleshooting
+
+NOT theoretical SQL certification knowledge.
+
+This roadmap is intentionally aligned toward:
+- Databricks
+- PySpark
+- ETL pipelines
+- Cloud Data Platform Engineering
+- Data DevOps roles
+
+# CASE WHEN & CONDITIONAL AGGREGATION
+
+## Cloud Data Platform Engineer Revision Notes
+
+---
+
+# 1. WHAT IS CASE WHEN?
+
+CASE WHEN is SQL's IF-ELSE logic.
+
+It is used to:
+
+* categorize data
+* transform values
+* create validation flags
+* generate business rules
+
+---
+
+## Basic Syntax
+
+```sql
+SELECT
+customer_id,
+CASE
+    WHEN salary > 100000 THEN 'HIGH'
+    ELSE 'NORMAL'
+END AS salary_category
+FROM employee_salary;
+```
+
+---
+
+## Easy Memory
+
+WHERE answers:
+
+```text
+Which rows should I keep?
+```
+
+CASE WHEN answers:
+
+```text
+How should I label or transform this row?
+```
+
+---
+
+# 2. CASE WHEN EXAMPLE
+
+Input:
+
+| emp_name | salary |
+| -------- | ------ |
+| Rahul    | 120000 |
+| Amit     | 75000  |
+| Neha     | 40000  |
+
+Query:
+
+```sql
+SELECT
+emp_name,
+salary,
+CASE
+    WHEN salary > 100000 THEN 'HIGH'
+    WHEN salary BETWEEN 50000 AND 100000 THEN 'MEDIUM'
+    ELSE 'LOW'
+END AS salary_category
+FROM employee_salary;
+```
+
+Output:
+
+| emp_name | salary | salary_category |
+| -------- | ------ | --------------- |
+| Rahul    | 120000 | HIGH            |
+| Amit     | 75000  | MEDIUM          |
+| Neha     | 40000  | LOW             |
+
+---
+
+# 3. REAL ETL USE CASES
+
+## Customer Segmentation
+
+```sql
+CASE
+    WHEN total_purchase > 100000 THEN 'PREMIUM'
+    ELSE 'REGULAR'
+END
+```
+
+---
+
+## Validation Status
+
+```sql
+CASE
+    WHEN source_count = target_count THEN 'PASS'
+    ELSE 'FAIL'
+END
+```
+
+---
+
+## Audit Status
+
+```sql
+CASE
+    WHEN status = 'SUCCESS'
+    THEN 'VALID'
+    ELSE 'FAILED'
+END
+```
+
+---
+
+# 4. CONDITIONAL AGGREGATION
+
+Very important ETL pattern.
+
+Pattern:
+
+```sql
+SUM(
+    CASE
+        WHEN condition THEN 1
+        ELSE 0
+    END
+)
+```
+
+Used for:
+
+* validation reports
+* audit dashboards
+* data quality metrics
+* migration reconciliation
+
+---
+
+# 5. NULL COUNT VALIDATION
+
+Table:
+
+| customer_id |
+| ----------- |
+| 101         |
+| NULL        |
+| 103         |
+| NULL        |
+
+Query:
+
+```sql
+SELECT
+SUM(
+    CASE
+        WHEN customer_id IS NULL THEN 1
+        ELSE 0
+    END
+) AS null_customer_id_count
+FROM customer_validation;
+```
+
+Output:
+
+```text
+2
+```
+
+---
+
+# 6. MULTIPLE VALIDATIONS IN ONE QUERY
+
+```sql
+SELECT
+SUM(
+    CASE
+        WHEN customer_id IS NULL THEN 1
+        ELSE 0
+    END
+) AS null_customer_id_count,
+
+SUM(
+    CASE
+        WHEN city IS NULL THEN 1
+        ELSE 0
+    END
+) AS null_city_count
+FROM customer_validation;
+```
+
+Output:
+
+| null_customer_id_count | null_city_count |
+| ---------------------- | --------------- |
+| 2                      | 2               |
+
+---
+
+# 7. SUCCESS / FAILURE COUNT
+
+Input:
+
+| status  |
+| ------- |
+| SUCCESS |
+| FAILED  |
+| SUCCESS |
+| FAILED  |
+
+Query:
+
+```sql
+SELECT
+
+SUM(
+    CASE
+        WHEN status = 'SUCCESS'
+        THEN 1
+        ELSE 0
+    END
+) AS success_count,
+
+SUM(
+    CASE
+        WHEN status = 'FAILED'
+        THEN 1
+        ELSE 0
+    END
+) AS failed_count
+
+FROM batch_audit;
+```
+
+Output:
+
+| success_count | failed_count |
+| ------------- | ------------ |
+| 2             | 2            |
+
+---
+
+# 8. PASS / FAIL VALIDATION REPORT
+
+```sql
+SELECT
+table_name,
+source_count,
+target_count,
+
+CASE
+    WHEN source_count = target_count
+    THEN 'PASS'
+    ELSE 'FAIL'
+END AS validation_status
+
+FROM validation_report;
+```
+
+---
+
+# 9. PRODUCTION ETL EXAMPLES
+
+Used in:
+
+* migration validation
+* reconciliation frameworks
+* ETL audit reports
+* Databricks validation jobs
+* PySpark transformations
+* data quality dashboards
+* business rule mapping
+
+---
+
+# 10. SQL TO PYSPARK MAPPING
+
+SQL:
+
+```sql
+CASE
+    WHEN salary > 100000
+    THEN 'HIGH'
+    ELSE 'LOW'
+END
+```
+
+PySpark:
+
+```python
+when(col("salary") > 100000, "HIGH") \
+.otherwise("LOW")
+```
+
+Very important because CASE WHEN directly maps to PySpark when/otherwise.
+
+---
+
+# REVISION CHEAT SHEET
+
+## Categorization
+
+```sql
+CASE
+    WHEN condition THEN value
+    ELSE value
+END
+```
+
+---
+
+## Count Matching Records
+
+```sql
+SUM(
+    CASE
+        WHEN condition THEN 1
+        ELSE 0
+    END
+)
+```
+
+---
+
+## Validation Status
+
+```sql
+CASE
+    WHEN source_count = target_count
+    THEN 'PASS'
+    ELSE 'FAIL'
+END
+```
+
+---
+
+# MOST IMPORTANT MEMORY
+
+CASE WHEN:
+
+```text
+Transform data
+```
+
+WHERE:
+
+```text
+Filter data
+```
+
+Conditional Aggregation:
+
+```text
+Count or summarize matching records
+```
+***************************************************************
+
