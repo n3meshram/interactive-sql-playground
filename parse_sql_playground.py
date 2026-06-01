@@ -259,6 +259,86 @@ CHALLENGES = {
             "targetQuery": "SELECT order_id, COALESCE(order_amount, 0.0) as amount_clean FROM orders",
             "initialCode": "SELECT order_id, COALESCE(order_amount, 0.0) as amount_clean\\nFROM orders;"
         }
+    ],
+    "10-merge-upsert-thinking-conceptual": [
+        {
+            "title": "Lab 1: Identify New Source Records",
+            "prompt": "Write a query to identify which <code>customer_id</code>s from the <code>source_customers</code> table are missing in the <code>target_customers</code> table and need to be inserted. Select their <code>customer_id</code>, <code>customer_name</code>, and <code>city</code>.",
+            "targetQuery": "SELECT s.customer_id, s.customer_name, s.city FROM source_customers s LEFT JOIN target_customers t ON s.customer_id = t.customer_id WHERE t.customer_id IS NULL",
+            "initialCode": "SELECT s.customer_id, s.customer_name, s.city\\nFROM source_customers s\\nLEFT JOIN target_customers t ON s.customer_id = t.customer_id\\nWHERE t.customer_id IS NULL;"
+        },
+        {
+            "title": "Lab 2: Identify Updated Source Records",
+            "prompt": "Write a query to find which <code>customer_id</code>s exist in both <code>source_customers</code> and <code>target_customers</code> but have different <code>city</code> values (meaning they require an update). Select <code>customer_id</code>, the new city as <code>source_city</code>, and the old city as <code>target_city</code>.",
+            "targetQuery": "SELECT s.customer_id, s.city as source_city, t.city as target_city FROM source_customers s INNER JOIN target_customers t ON s.customer_id = t.customer_id WHERE s.city <> t.city",
+            "initialCode": "SELECT s.customer_id, s.city as source_city, t.city as target_city\\nFROM source_customers s\\nINNER JOIN target_customers t ON s.customer_id = t.customer_id\\nWHERE s.city <> t.city;"
+        },
+        {
+            "title": "Lab 3: Generate Unified Upsert State",
+            "prompt": "Write a query to simulate the final UPSERT state. Select all records from <code>source_customers</code> (the newest state), plus records from <code>target_customers</code> that are NOT in <code>source_customers</code> (records that were not updated). Return <code>customer_id</code> and <code>city</code>, ordered by <code>customer_id</code>.",
+            "targetQuery": "SELECT customer_id, city FROM source_customers UNION SELECT customer_id, city FROM target_customers WHERE customer_id NOT IN (SELECT customer_id FROM source_customers) ORDER BY customer_id",
+            "initialCode": "SELECT customer_id, city FROM source_customers\\nUNION\\nSELECT customer_id, city FROM target_customers WHERE customer_id NOT IN (SELECT customer_id FROM source_customers)\\nORDER BY customer_id;"
+        }
+    ],
+    "11-scd-slowly-changing-dimensions-basics": [
+        {
+            "title": "Lab 1: Identify SCD Type 1 Overwrites",
+            "prompt": "Identify employees whose department changed between the target table (<code>scd1_target</code>) and the incoming source table (<code>scd1_source</code>). In SCD Type 1, these will be overwritten. Select <code>emp_id</code>, <code>old_dept</code> (from target), and <code>new_dept</code> (from source) where they differ.",
+            "targetQuery": "SELECT s.emp_id, t.dept as old_dept, s.dept as new_dept FROM scd1_source s INNER JOIN scd1_target t ON s.emp_id = t.emp_id WHERE s.dept <> t.dept",
+            "initialCode": "SELECT s.emp_id, t.dept as old_dept, s.dept as new_dept\\nFROM scd1_source s\\nINNER JOIN scd1_target t ON s.emp_id = t.emp_id\\nWHERE s.dept <> t.dept;"
+        },
+        {
+            "title": "Lab 2: Fetch Current SCD Type 2 Records",
+            "prompt": "For SCD Type 2 history tracking, write a query to fetch the current active department assignments from the historical table <code>scd2_target</code> (where <code>is_current</code> is 'Y'). Select <code>emp_id</code>, <code>emp_name</code>, and <code>dept</code>.",
+            "targetQuery": "SELECT emp_id, emp_name, dept FROM scd2_target WHERE is_current = 'Y'",
+            "initialCode": "SELECT emp_id, emp_name, dept\\nFROM scd2_target\\nWHERE is_current = 'Y';"
+        },
+        {
+            "title": "Lab 3: Historical Date Range Lookup",
+            "prompt": "Find which department employee 101 belonged to on '2026-03-01' using the validity range columns <code>valid_from</code> and <code>valid_to</code> in the <code>scd2_target</code> table. Select <code>emp_id</code>, <code>emp_name</code>, and <code>dept</code>.",
+            "targetQuery": "SELECT emp_id, emp_name, dept FROM scd2_target WHERE emp_id = 101 AND '2026-03-01' BETWEEN valid_from AND valid_to",
+            "initialCode": "SELECT emp_id, emp_name, dept\\nFROM scd2_target\\nWHERE emp_id = 101 AND '2026-03-01' BETWEEN valid_from AND valid_to;"
+        }
+    ],
+    "12-delete-detection-logic": [
+        {
+            "title": "Lab 1: Detect Missing Source Records",
+            "prompt": "Write a query to identify customer records in the target table (<code>delete_target</code>) that are missing from the source table (<code>delete_source</code>) using a LEFT JOIN. Select <code>cust_id</code> from the target table where the source ID is NULL.",
+            "targetQuery": "SELECT t.cust_id FROM delete_target t LEFT JOIN delete_source s ON t.cust_id = s.cust_id WHERE s.cust_id IS NULL",
+            "initialCode": "SELECT t.cust_id\\nFROM delete_target t\\nLEFT JOIN delete_source s ON t.cust_id = s.cust_id\\nWHERE s.cust_id IS NULL;"
+        },
+        {
+            "title": "Lab 2: Find Active Target Records for Inactivation",
+            "prompt": "Find target customers that are missing from the source table but are STILL marked as active (<code>active_flag = 'Y'</code>) in the target table. These are records that the ETL pipeline needs to mark inactive. Select their <code>cust_id</code>.",
+            "targetQuery": "SELECT t.cust_id FROM delete_target t LEFT JOIN delete_source s ON t.cust_id = s.cust_id WHERE s.cust_id IS NULL AND t.active_flag = 'Y'",
+            "initialCode": "SELECT t.cust_id\\nFROM delete_target t\\nLEFT JOIN delete_source s ON t.cust_id = s.cust_id\\nWHERE s.cust_id IS NULL AND t.active_flag = 'Y';"
+        },
+        {
+            "title": "Lab 3: Alternative Delete Detection using NOT EXISTS",
+            "prompt": "Write a query to perform the same delete detection using the <code>NOT EXISTS</code> clause instead of a LEFT JOIN. Select <code>cust_id</code> from the <code>delete_target</code> table where no match exists in the <code>delete_source</code> table.",
+            "targetQuery": "SELECT t.cust_id FROM delete_target t WHERE NOT EXISTS (SELECT 1 FROM delete_source s WHERE s.cust_id = t.cust_id)",
+            "initialCode": "SELECT t.cust_id\\nFROM delete_target t\\nWHERE NOT EXISTS (\\n  SELECT 1 FROM delete_source s WHERE s.cust_id = t.cust_id\\n);"
+        }
+    ],
+    "13-audit-columns": [
+        {
+            "title": "Lab 1: Identify Unmodified Records",
+            "prompt": "Select <code>customer_id</code> and <code>city</code> for all customers in the <code>audit_customers</code> table who have never been updated since insertion (meaning <code>updated_date</code> is NULL or equals <code>created_date</code>).",
+            "targetQuery": "SELECT customer_id, city FROM audit_customers WHERE updated_date IS NULL OR updated_date = created_date",
+            "initialCode": "SELECT customer_id, city\\nFROM audit_customers\\nWHERE updated_date IS NULL OR updated_date = created_date;"
+        },
+        {
+            "title": "Lab 2: Detect Late Modifications",
+            "prompt": "Write a query to select the <code>customer_id</code> and the number of days elapsed between creation and update as <code>days_elapsed</code> for customers whose profiles were modified at least 30 days after they were created. (Hint: Use <code>CAST(julianday(updated_date) - julianday(created_date) AS INTEGER)</code>).",
+            "targetQuery": "SELECT customer_id, CAST(julianday(updated_date) - julianday(created_date) AS INTEGER) as days_elapsed FROM audit_customers WHERE updated_date IS NOT NULL AND julianday(updated_date) - julianday(created_date) >= 30",
+            "initialCode": "SELECT customer_id, CAST(julianday(updated_date) - julianday(created_date) AS INTEGER) as days_elapsed\\nFROM audit_customers\\nWHERE updated_date IS NOT NULL AND julianday(updated_date) - julianday(created_date) >= 30;"
+        },
+        {
+            "title": "Lab 3: Aggregate Daily Audit Counts",
+            "prompt": "For the creation date '2026-06-01', count the total records created as <code>created_count</code> and the number of those records that have been updated since then (where <code>updated_date</code> is NOT NULL) as <code>updated_count</code> from the <code>audit_customers</code> table.",
+            "targetQuery": "SELECT COUNT(*) as created_count, COUNT(updated_date) as updated_count FROM audit_customers WHERE created_date = '2026-06-01'",
+            "initialCode": "SELECT COUNT(*) as created_count, COUNT(updated_date) as updated_count\\nFROM audit_customers\\nWHERE created_date = '2026-06-01';"
+        }
     ]
 }
 
@@ -332,6 +412,84 @@ INSERT INTO sales VALUES (4, 'East', 9000.00, '2026-05-03');
 INSERT INTO sales VALUES (5, 'West', 22000.00, '2026-05-02');
 INSERT INTO sales VALUES (6, 'South', 14000.00, '2026-05-04');
 INSERT INTO sales VALUES (7, 'West', 16000.00, '2026-05-05');
+
+CREATE TABLE source_customers (
+    customer_id INTEGER PRIMARY KEY,
+    customer_name TEXT,
+    city TEXT,
+    email TEXT
+);
+INSERT INTO source_customers VALUES (101, 'Alice Smith', 'Chennai', 'alice@gmail.com');
+INSERT INTO source_customers VALUES (102, 'Bob Jones', 'Delhi', 'bob@gmail.com');
+INSERT INTO source_customers VALUES (104, 'Diana Prince', 'Mumbai', 'diana@gmail.com');
+
+CREATE TABLE target_customers (
+    customer_id INTEGER PRIMARY KEY,
+    customer_name TEXT,
+    city TEXT,
+    email TEXT
+);
+INSERT INTO target_customers VALUES (101, 'Alice Smith', 'Pune', 'alice@gmail.com');
+INSERT INTO target_customers VALUES (102, 'Bob Jones', 'Delhi', 'bob@gmail.com');
+INSERT INTO target_customers VALUES (103, 'Charlie Brown', 'Bangalore', 'charlie@gmail.com');
+
+CREATE TABLE scd1_source (
+    emp_id INTEGER PRIMARY KEY,
+    emp_name TEXT,
+    dept TEXT
+);
+INSERT INTO scd1_source VALUES (1, 'Raj Patel', 'Engineering');
+INSERT INTO scd1_source VALUES (2, 'Vikram Singh', 'Marketing');
+INSERT INTO scd1_source VALUES (3, 'Amit Sharma', 'Engineering');
+
+CREATE TABLE scd1_target (
+    emp_id INTEGER PRIMARY KEY,
+    emp_name TEXT,
+    dept TEXT
+);
+INSERT INTO scd1_target VALUES (1, 'Raj Patel', 'Sales');
+INSERT INTO scd1_target VALUES (2, 'Vikram Singh', 'Marketing');
+INSERT INTO scd1_target VALUES (3, 'Amit Sharma', 'HR');
+
+CREATE TABLE scd2_target (
+    emp_id INTEGER,
+    emp_name TEXT,
+    dept TEXT,
+    valid_from TEXT,
+    valid_to TEXT,
+    is_current TEXT
+);
+INSERT INTO scd2_target VALUES (101, 'Alice Smith', 'Marketing', '2026-01-01', '2026-02-28', 'N');
+INSERT INTO scd2_target VALUES (101, 'Alice Smith', 'Engineering', '2026-03-01', '2026-05-15', 'N');
+INSERT INTO scd2_target VALUES (101, 'Alice Smith', 'Sales', '2026-05-16', '9999-12-31', 'Y');
+INSERT INTO scd2_target VALUES (102, 'Bob Jones', 'Sales', '2026-01-01', '9999-12-31', 'Y');
+
+CREATE TABLE delete_source (
+    cust_id INTEGER PRIMARY KEY
+);
+INSERT INTO delete_source VALUES (101);
+INSERT INTO delete_source VALUES (102);
+INSERT INTO delete_source VALUES (104);
+
+CREATE TABLE delete_target (
+    cust_id INTEGER PRIMARY KEY,
+    active_flag TEXT
+);
+INSERT INTO delete_target VALUES (101, 'Y');
+INSERT INTO delete_target VALUES (102, 'Y');
+INSERT INTO delete_target VALUES (103, 'Y');
+INSERT INTO delete_target VALUES (104, 'Y');
+
+CREATE TABLE audit_customers (
+    customer_id INTEGER PRIMARY KEY,
+    city TEXT,
+    created_date TEXT,
+    updated_date TEXT
+);
+INSERT INTO audit_customers VALUES (101, 'Pune', '2026-06-01', NULL);
+INSERT INTO audit_customers VALUES (102, 'Delhi', '2026-05-01', '2026-06-01');
+INSERT INTO audit_customers VALUES (103, 'Bangalore', '2026-06-01', '2026-06-01');
+INSERT INTO audit_customers VALUES (104, 'Mumbai', '2026-04-01', '2026-06-02');
 """
 
 def clean_text(text):
@@ -1512,6 +1670,287 @@ FROM student_contacts;</code></pre>
     <div class="etl-de-why">
         <strong>🚀 Why Data Engineers Care:</strong>
         <p>Essential when cleaning raw ingest data in Silver lakehouse layers. We replace NULL values in keys, regions, or amounts with standard defaults (e.g. -1, 'Unknown', 0.0) to ensure analytics queries don't break.</p>
+    </div>
+</div>
+""",
+        "10-merge-upsert-thinking-conceptual": """
+<div class="kid-theory-section">
+    <p>Before SQL, let's use a real-life example.</p>
+    
+    <div class="theory-imagine-box">
+        <strong>Imagine (The Stencil & Drawing):</strong>
+        <p>You have a drawing board (Target) and a new set of shapes (Source):</p>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr><th>shape_id</th><th>color</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Circle</td><td>Red (already drawn)</td></tr>
+                    <tr><td>Square</td><td>Blue (already drawn)</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p>New incoming sheet (Source):</p>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr><th>shape_id</th><th>color</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Circle</td><td>Yellow (update color!)</td></tr>
+                    <tr><td>Triangle</td><td>Green (new shape!)</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="theory-ask-box">
+        <strong>Business asks:</strong>
+        <p>Synchronize the drawing board with the new sheet. How do we apply the changes?</p>
+    </div>
+    
+    <div class="theory-block">
+        <strong>MERGE / UPSERT</strong>
+        <p><strong>Think:</strong> "If a shape already exists on our board, paint over it with the new color (<code>UPDATE</code>). If it doesn't exist, draw it from scratch (<code>INSERT</code>). That is <strong>UP</strong>date + in<strong>SERT</strong> = <strong>UPSERT</strong>."</p>
+    </div>
+    
+    <div class="code-container">
+        <div class="code-header">
+            <span class="code-lang">CONCEPTUAL SQL (MERGE)</span>
+        </div>
+        <pre><code class="language-sql">MERGE INTO target_table t
+USING source_table s
+ON t.id = s.id
+WHEN MATCHED THEN
+    UPDATE SET t.color = s.color
+WHEN NOT MATCHED THEN
+    INSERT (id, color) VALUES (s.id, s.color);</code></pre>
+    </div>
+    
+    <div class="how-sql-thinks">
+        <strong>How SQL Thinks:</strong>
+        <ul>
+            <li>Check <strong>Circle</strong>: Exists in Target? <strong>YES</strong> (Matched) → Update color from Red to Yellow.</li>
+            <li>Check <strong>Square</strong>: Exists in Source? <strong>NO</strong> (No incoming changes) → Keep as is (Blue).</li>
+            <li>Check <strong>Triangle</strong>: Exists in Target? <strong>NO</strong> (Not matched) → Insert new shape (Triangle, Green).</li>
+        </ul>
+    </div>
+    
+    <div class="theory-output-box">
+        <strong>Output Target Table:</strong>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr><th>shape_id</th><th>color</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>Circle</td><td>Yellow</td></tr>
+                    <tr><td>Square</td><td>Blue</td></tr>
+                    <tr><td>Triangle</td><td>Green</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="important-connection">
+        <strong>💡 Important Connection:</strong>
+        <p>In standard data warehouses like Delta Lake (Databricks) or Snowflake, running a raw <code>INSERT</code> every day causes duplicate records. A <code>MERGE</code> statement ensures we maintain a single, clean version of truth by comparing key columns.</p>
+    </div>
+    
+    <div class="memory-trick">
+        <strong>🔑 Easy Memory Trick:</strong>
+        <p><strong>The Smart Clipboard:</strong> Think of a contact list on your phone. If you add a friend who is already there, you edit their profile (UPDATE). If they are new, you create a new contact card (INSERT). That's UPSERT!</p>
+    </div>
+    
+    <div class="etl-de-why">
+        <strong>🚀 Why Data Engineers Care:</strong>
+        <p>Merge operations are the backbone of incremental load pipelines. Instead of reading and rewriting billions of rows every hour, we only process the tiny stream of updates and merge them in, saving massive cloud compute bills.</p>
+    </div>
+</div>
+""",
+        "11-scd-slowly-changing-dimensions-basics": """
+<div class="kid-theory-section">
+    <p>Slowly Changing Dimensions (SCD) define how we handle changes to master lists (like a customer's city or an employee's department) over time.</p>
+    
+    <div class="theory-imagine-box">
+        <strong>Imagine (Customer moves city):</strong>
+        <p>Customer 101 moves from Mumbai to Pune.</p>
+        <p><strong>Before:</strong> 101 | Mumbai</p>
+        <p><strong>After source update:</strong> 101 | Pune</p>
+    </div>
+    
+    <div class="theory-block">
+        <strong>SCD Type 1: Overwrite (No History)</strong>
+        <p><strong>Think:</strong> "Erase the old value and write the new one in its place. The history is gone forever."</p>
+        <p><strong>Target becomes:</strong> 101 | Pune (Mumbai is lost!)</p>
+    </div>
+
+    <div class="theory-block">
+        <strong>SCD Type 2: Add New Row (Full History Tracking)</strong>
+        <p><strong>Think:</strong> "Keep the old row, mark it as historical, and insert a brand new row with the current value and validity dates."</p>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr><th>cust_id</th><th>city</th><th>valid_from</th><th>valid_to</th><th>is_current</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>101</td><td>Mumbai</td><td>2026-01-01</td><td>2026-05-31</td><td>N</td></tr>
+                    <tr><td>101</td><td>Pune</td><td>2026-06-01</td><td>9999-12-31</td><td>Y</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="how-sql-thinks">
+        <strong>Comparing SCD 1 vs SCD 2:</strong>
+        <ul>
+            <li><strong>SCD Type 1:</strong> Very simple. Uses less storage. Good when we don't care about the past (e.g. fixing a typo in a name).</li>
+            <li><strong>SCD Type 2:</strong> Keeps history. Essential for business reports. If Alice bought products in January (when she lived in Mumbai) and in June (living in Pune), we can attribute sales to the correct city at the time of purchase.</li>
+        </ul>
+    </div>
+    
+    <div class="important-connection">
+        <strong>💡 Important Connection:</strong>
+        <p>SCD Type 2 uses date ranges (<code>valid_from</code> and <code>valid_to</code>) so that we can run point-in-time lookups (e.g., <code>WHERE '2026-03-15' BETWEEN valid_from AND valid_to</code>) to see what the state of data was at any exact second in the past.</p>
+    </div>
+    
+    <div class="memory-trick">
+        <strong>🔑 Easy Memory Trick:</strong>
+        <ul>
+            <li><strong>SCD Type 1 (The Whiteboard):</strong> Erase the old name, write the new name. No trace of the past.</li>
+            <li><strong>SCD Type 2 (The Photo Album):</strong> Don't throw away your old baby photos when you grow up. Keep them and add a new photo with the new date!</li>
+        </ul>
+    </div>
+    
+    <div class="etl-de-why">
+        <strong>🚀 Why Data Engineers Care:</strong>
+        <p>Data warehousing relies on historical analysis. If you run SCD Type 1 on a customer's location, all past order reports will show their current city, distorting historical regional sales analytics. Type 2 is a MUST for accurate business intelligence.</p>
+    </div>
+</div>
+""",
+        "12-delete-detection-logic": """
+<div class="kid-theory-section">
+    <p>Before SQL, let's use a real-life example.</p>
+    
+    <div class="theory-imagine-box">
+        <strong>Imagine (The Missing Roll Call):</strong>
+        <p>Yesterday, the source list had 3 kids. Today, it has 2. Kid 103 disappeared:</p>
+        <p><strong>Yesterday Source:</strong> 101, 102, 103</p>
+        <p><strong>Today Source:</strong> 101, 102</p>
+        <p><strong>Our Target DB (currently has):</strong> 101, 102, 103</p>
+    </div>
+    
+    <div class="theory-ask-box">
+        <strong>Business asks:</strong>
+        <p>Identify which records were deleted from the source so we can update our target database.</p>
+    </div>
+    
+    <div class="theory-block">
+        <strong>Delete Detection Pattern</strong>
+        <p><strong>Think:</strong> "If a record exists in our Target but is missing in the incoming Source, it has been deleted. We perform a Target LEFT JOIN Source and keep rows where Source columns are NULL."</p>
+    </div>
+    
+    <div class="code-container">
+        <div class="code-header">
+            <span class="code-lang">SQL</span>
+        </div>
+        <pre><code class="language-sql">SELECT t.customer_id
+FROM target_table t
+LEFT JOIN source_table s
+ON t.customer_id = s.customer_id
+WHERE s.customer_id IS NULL;</code></pre>
+    </div>
+    
+    <div class="how-sql-thinks">
+        <strong>How SQL Thinks:</strong>
+        <ul>
+            <li>Match Target 101 with Source 101 → Found! (Keep in source list)</li>
+            <li>Match Target 102 with Source 102 → Found! (Keep in source list)</li>
+            <li>Match Target 103 with Source 103 → <strong>NULL</strong>! (Missing from source)</li>
+            <li><strong>Filter (WHERE s.customer_id IS NULL):</strong> Keep 103. This is our deleted record!</li>
+        </ul>
+    </div>
+    
+    <div class="important-connection">
+        <strong>💡 Important Connection:</strong>
+        <p>In production, databases rarely use physical <code>DELETE FROM</code> queries because they erase history. Instead, they run an <code>UPDATE</code> to set a column like <code>active_flag = 'N'</code> or <code>is_deleted = 1</code>. This is called a <strong>Soft Delete</strong>.</p>
+    </div>
+    
+    <div class="memory-trick">
+        <strong>🔑 Easy Memory Trick:</strong>
+        <ul>
+            <li><strong>New Records (Insert):</strong> Source LEFT JOIN Target WHERE Target IS NULL (Source has it, Target doesn't).</li>
+            <li><strong>Deleted Records (Delete):</strong> Target LEFT JOIN Source WHERE Source IS NULL (Target has it, Source doesn't).</li>
+        </ul>
+    </div>
+    
+    <div class="etl-de-why">
+        <strong>🚀 Why Data Engineers Care:</strong>
+        <p>A data engineer reports *what the data shows*, not what they assume happened. If a record is missing from the source, we say: 'Record exists in target but is missing from source.' This could mean a delete happened, or it could mean the source extract job failed and missed a record. We report, then investigate!</p>
+    </div>
+</div>
+""",
+        "13-audit-columns": """
+<div class="kid-theory-section">
+    <p>Audit columns are system metadata columns added to every database table to track when records were created and updated. They do not store business values; they store trace history.</p>
+    
+    <div class="theory-imagine-box">
+        <strong>Imagine (Record Birth & Changes):</strong>
+        <p>A new customer record is born on June 1st:</p>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr><th>customer_id</th><th>city</th><th>created_date</th><th>updated_date</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>101</td><td>Pune</td><td>2026-06-01</td><td>NULL (or same as created)</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p>The customer updates their city to Chennai on June 2nd:</p>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr><th>customer_id</th><th>city</th><th>created_date</th><th>updated_date</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>101</td><td>Chennai</td><td>2026-06-01</td><td>2026-06-02</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="theory-block">
+        <strong>Audit Columns Rules</strong>
+        <ul>
+            <li><code>created_date</code>: Set on the initial insert and **NEVER** changes. It represents the birth date of the record.</li>
+            <li><code>updated_date</code>: Set to the current timestamp on every modification. It shows the last time the record was edited.</li>
+        </ul>
+    </div>
+    
+    <div class="how-sql-thinks">
+        <strong>Real Interview Question:</strong>
+        <p><em>"If a customer was created on Jan 1 and updated on Mar 1, what should happen to created_date after the update?"</em></p>
+        <p><strong>Answer:</strong> Nothing! <code>created_date</code> remains Jan 1. Only <code>updated_date</code> changes to Mar 1.</p>
+    </div>
+    
+    <div class="important-connection">
+        <strong>💡 Important Connection:</strong>
+        <p>Audit columns like <code>updated_date</code> are critical for **Incremental Loading**. Instead of reading all 100 million rows, the ETL pipeline queries: <code>WHERE updated_date >= yesterday</code> to only load the changed rows.</p>
+    </div>
+    
+    <div class="memory-trick">
+        <strong>🔑 Easy Memory Trick:</strong>
+        <ul>
+            <li><strong>created_date = Birth Certificate:</strong> Issued once when you are born. Never changes.</li>
+            <li><strong>updated_date = Passport Stamps:</strong> Stamped every time you travel. Changes with every action.</li>
+        </ul>
+    </div>
+    
+    <div class="etl-de-why">
+        <strong>🚀 Why Data Engineers Care:</strong>
+        <p>Without audit columns, debugging pipeline failures is a nightmare. Audit columns tell us exactly when a row was modified, which ETL batch created it, and what pipeline run updated it, making data lineage and troubleshooting simple.</p>
     </div>
 </div>
 """
